@@ -19,6 +19,7 @@ pub mod lwpolyline;
 pub mod minsert;
 pub mod mline;
 pub mod mtext;
+pub mod multileader;
 pub mod oleframe;
 pub mod point;
 pub mod polyline_2d;
@@ -82,7 +83,8 @@ pub use face3d::{
 };
 pub use hatch::{
     decode_hatch, decode_hatch_r14, decode_hatch_r2004, decode_hatch_r2007, decode_hatch_r2010,
-    decode_hatch_r2013, HatchEntity, HatchPath, HatchPattern, HatchPatternLine,
+    decode_hatch_r2013, HatchBoundary, HatchEdge, HatchEntity, HatchPath, HatchPattern,
+    HatchPatternLine,
 };
 pub use image::{
     decode_image, decode_image_r2007, decode_image_r2010, decode_image_r2013, ImageEntity,
@@ -118,6 +120,10 @@ pub use mline::{
 pub use mtext::{
     decode_mtext, decode_mtext_exact, decode_mtext_r14, decode_mtext_r2004, decode_mtext_r2007,
     decode_mtext_r2010, decode_mtext_r2013, MTextEntity,
+};
+pub use multileader::{
+    decode_multileader_r2010, decode_multileader_r2013, MLeaderBlock, MLeaderLine, MLeaderRoot,
+    MLeaderText, MultiLeaderEntity,
 };
 pub use oleframe::{
     decode_ole2frame, decode_ole2frame_r14, decode_ole2frame_r2007, decode_ole2frame_r2010,

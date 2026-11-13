@@ -3884,3 +3884,222 @@ fn scan_block_header_name_in_string_stream(
     }
     best.map(|(_, name)| name)
 }
+
+/// Where every ACAD_TABLE is placed and the block it draws:
+/// `(handle, insert, scale, rotation, extrusion, block_header_handle)`.
+///
+/// A table record begins as an INSERT does (insertion point, scale, rotation, extrusion, owned-attribute
+/// flag) and its handle stream begins with the handle of the anonymous `*T` block holding the table's
+/// lines and cell texts, so the INSERT decoder reads both; the cell data that follows is not read.
+#[pyfunction]
+pub fn decode_table_placements(
+    path: &str,
+) -> PyResult<
+    Vec<(
+        u64,
+        (f64, f64, f64),
+        (f64, f64, f64),
+        f64,
+        (f64, f64, f64),
+        Option<u64>,
+    )>,
+> {
+    let shared = decoded_file(path)?;
+    let decoder = shared.decoder()?;
+    let dynamic_types = &shared.dynamic_types;
+    let is_table = |code: u16| {
+        dynamic_types
+            .get(&code)
+            .map(|name| name == "ACAD_TABLE")
+            .unwrap_or(false)
+    };
+    let mut rows = Vec::new();
+    for obj in decoder
+        .matching_objects(&shared.index, true, is_table)
+        .iter()
+    {
+        let Some((record, header)) = parse_record_and_header(&decoder, obj.offset, true)? else {
+            continue;
+        };
+        if !is_table(header.type_code) {
+            continue;
+        }
+        let mut reader = record.bit_reader();
+        if skip_object_type_prefix(&mut reader, decoder.version()).is_err() {
+            continue;
+        }
+        let Ok(entity) =
+            decode_insert_for_version(&mut reader, decoder.version(), &header, obj.handle.0)
+        else {
+            continue;
+        };
+        rows.push((
+            obj.handle.0,
+            entity.position,
+            entity.scale,
+            entity.rotation,
+            entity.extrusion,
+            entity.block_header_handle,
+        ));
+    }
+    Ok(rows)
+}
+
+/// Every MULTILEADER of an R2010 or later drawing, one dict each: its leader roots (last leader point,
+/// dogleg, leader lines and their vertices), annotation context (scale, content base, base plane) and text
+/// or block content, and its style overrides. Handles (style, line type, arrow, text style, block) are
+/// not read. A record that does not decode is left out.
+#[pyfunction]
+pub fn decode_multileaders(py: Python<'_>, path: &str) -> PyResult<Vec<PyObject>> {
+    let shared = decoded_file(path)?;
+    let decoder = shared.decoder()?;
+    let dynamic_types = &shared.dynamic_types;
+    let r2013 = matches!(
+        decoder.version(),
+        version::DwgVersion::R2013 | version::DwgVersion::R2018
+    );
+    if !r2013 && !matches!(decoder.version(), version::DwgVersion::R2010) {
+        return Ok(Vec::new());
+    }
+    let is_leader = |code: u16| {
+        dynamic_types
+            .get(&code)
+            .map(|name| name == "MULTILEADER")
+            .unwrap_or(false)
+    };
+    let mut rows = Vec::new();
+    for obj in decoder
+        .matching_objects(&shared.index, true, is_leader)
+        .iter()
+    {
+        let Some((record, header)) = parse_record_and_header(&decoder, obj.offset, true)? else {
+            continue;
+        };
+        if !is_leader(header.type_code) {
+            continue;
+        }
+        let Some(end_bit) = resolve_r2010_object_data_end_bit_exact(&header) else {
+            continue;
+        };
+        let mut reader = record.bit_reader();
+        if skip_object_type_prefix(&mut reader, decoder.version()).is_err() {
+            continue;
+        }
+        let decoded = if r2013 {
+            entities::decode_multileader_r2013(&mut reader, end_bit, obj.handle.0)
+        } else {
+            entities::decode_multileader_r2010(&mut reader, end_bit, obj.handle.0)
+        };
+        let Ok(leader) = decoded else {
+            continue;
+        };
+        rows.push(multileader_to_py(py, &leader)?);
+    }
+    Ok(rows)
+}
+
+fn multileader_to_py(py: Python<'_>, leader: &entities::MultiLeaderEntity) -> PyResult<PyObject> {
+    let row = pyo3::types::PyDict::new_bound(py);
+    row.set_item("handle", leader.handle)?;
+    let roots = pyo3::types::PyList::empty_bound(py);
+    for root in &leader.roots {
+        let item = pyo3::types::PyDict::new_bound(py);
+        item.set_item("last_leader_point", root.last_leader_point)?;
+        item.set_item("dogleg_vector", root.dogleg_vector)?;
+        item.set_item("breaks", root.breaks.clone())?;
+        item.set_item("branch_index", root.branch_index)?;
+        item.set_item("dogleg_length", root.dogleg_length)?;
+        item.set_item("attachment_direction", root.attachment_direction)?;
+        let lines = pyo3::types::PyList::empty_bound(py);
+        for line in &root.lines {
+            let entry = pyo3::types::PyDict::new_bound(py);
+            entry.set_item("vertices", line.vertices.clone())?;
+            entry.set_item("line_index", line.line_index)?;
+            entry.set_item("line_type", line.line_type)?;
+            entry.set_item("color_index", line.color_index)?;
+            entry.set_item("true_color", line.true_color)?;
+            entry.set_item("lineweight", line.lineweight)?;
+            entry.set_item("arrow_size", line.arrow_size)?;
+            entry.set_item("flags", line.flags)?;
+            lines.append(entry)?;
+        }
+        item.set_item("lines", lines)?;
+        roots.append(item)?;
+    }
+    row.set_item("roots", roots)?;
+    row.set_item("scale", leader.scale)?;
+    row.set_item("content_base", leader.content_base)?;
+    row.set_item("text_height", leader.text_height)?;
+    row.set_item("arrow_size", leader.arrow_size)?;
+    row.set_item("landing_gap", leader.landing_gap)?;
+    row.set_item("text_left_attachment", leader.text_left_attachment)?;
+    row.set_item("text_right_attachment", leader.text_right_attachment)?;
+    row.set_item("text_angle_type", leader.text_angle_type)?;
+    row.set_item("text_alignment", leader.text_alignment)?;
+    if let Some(text) = &leader.text {
+        let item = pyo3::types::PyDict::new_bound(py);
+        item.set_item("text", text.text.clone())?;
+        item.set_item("normal", text.normal)?;
+        item.set_item("location", text.location)?;
+        item.set_item("direction", text.direction)?;
+        item.set_item("rotation", text.rotation)?;
+        item.set_item("width", text.width)?;
+        item.set_item("height", text.height)?;
+        item.set_item("line_spacing_factor", text.line_spacing_factor)?;
+        item.set_item("line_spacing_style", text.line_spacing_style)?;
+        item.set_item("color_index", text.color_index)?;
+        item.set_item("true_color", text.true_color)?;
+        item.set_item("alignment", text.alignment)?;
+        item.set_item("flow_direction", text.flow_direction)?;
+        item.set_item("background_color_index", text.background_color_index)?;
+        item.set_item("background_true_color", text.background_true_color)?;
+        item.set_item("background_scale", text.background_scale)?;
+        item.set_item("background_transparency", text.background_transparency)?;
+        item.set_item("has_background_fill", text.has_background_fill)?;
+        item.set_item("has_background_mask_fill", text.has_background_mask_fill)?;
+        row.set_item("text", item)?;
+    } else {
+        row.set_item("text", py.None())?;
+    }
+    if let Some(block) = &leader.block {
+        let item = pyo3::types::PyDict::new_bound(py);
+        item.set_item("normal", block.normal)?;
+        item.set_item("location", block.location)?;
+        item.set_item("scale", block.scale)?;
+        item.set_item("rotation", block.rotation)?;
+        item.set_item("color_index", block.color_index)?;
+        item.set_item("transform", block.transform.clone())?;
+        row.set_item("block", item)?;
+    } else {
+        row.set_item("block", py.None())?;
+    }
+    row.set_item("base_point", leader.base_point)?;
+    row.set_item("base_direction", leader.base_direction)?;
+    row.set_item("base_vertical", leader.base_vertical)?;
+    row.set_item("normal_reversed", leader.normal_reversed)?;
+    row.set_item("text_top_attachment", leader.text_top_attachment)?;
+    row.set_item("text_bottom_attachment", leader.text_bottom_attachment)?;
+    row.set_item("override_flags", leader.override_flags)?;
+    row.set_item("leader_type", leader.leader_type)?;
+    row.set_item("line_color_index", leader.line_color_index)?;
+    row.set_item("line_true_color", leader.line_true_color)?;
+    row.set_item("lineweight", leader.lineweight)?;
+    row.set_item("has_landing", leader.has_landing)?;
+    row.set_item("has_dogleg", leader.has_dogleg)?;
+    row.set_item("landing_distance", leader.landing_distance)?;
+    row.set_item("style_arrow_size", leader.style_arrow_size)?;
+    row.set_item("content_type", leader.content_type)?;
+    row.set_item("style_text_left", leader.style_text_left)?;
+    row.set_item("style_text_right", leader.style_text_right)?;
+    row.set_item("style_text_angle_type", leader.style_text_angle_type)?;
+    row.set_item("style_text_alignment", leader.style_text_alignment)?;
+    row.set_item("text_color_index", leader.text_color_index)?;
+    row.set_item("text_true_color", leader.text_true_color)?;
+    row.set_item("has_text_frame", leader.has_text_frame)?;
+    row.set_item("block_scale", leader.block_scale)?;
+    row.set_item("block_rotation", leader.block_rotation)?;
+    row.set_item("block_attachment", leader.block_attachment)?;
+    row.set_item("annotative", leader.annotative)?;
+    row.set_item("attachment_direction", leader.attachment_direction)?;
+    Ok(row.into_py(py))
+}
