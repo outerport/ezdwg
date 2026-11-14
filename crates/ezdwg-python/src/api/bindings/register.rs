@@ -54,6 +54,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(decode_table_placements, module)?)?;
     module.add_function(wrap_pyfunction!(decode_multileaders, module)?)?;
     module.add_function(wrap_pyfunction!(decode_hatch_boundaries, module)?)?;
+    module.add_function(wrap_pyfunction!(decode_wipeout_entities, module)?)?;
     module.add_function(wrap_pyfunction!(decode_layer_state_names, module)?)?;
     module.add_function(wrap_pyfunction!(decode_layer_state_xrecords, module)?)?;
     module.add_function(wrap_pyfunction!(decode_plotstyles, module)?)?;

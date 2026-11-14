@@ -67,3 +67,17 @@ def test_hatch_boundaries_read_as_stored_alike(version: str) -> None:
     assert boundaries(version) == boundaries("AC1032")
     kinds = {path[0] for _, paths in _core.decode_hatch_boundaries(sample("AC1032")) for path in paths}
     assert kinds == {"polyline", "edges"}
+
+
+@pytest.mark.parametrize("version", ["AC1015", "AC1021", "AC1024", "AC1027"])
+def test_a_wipeout_is_read_as_the_image_record_it_is_stored_as(version: str) -> None:
+    """A WIPEOUT is an IMAGE without an image: its clip boundary in the pixel space its vectors span, read alike
+    whatever the version the drawing was saved in."""
+    def wipeouts(name: str) -> list:
+        return [rounded(row[1:]) for row in _core.decode_wipeout_entities(sample(name))]
+
+    [reference] = wipeouts("AC1032")
+    _insert, u_vector, v_vector, size, _display, _clipping, clip_type, vertices = reference
+    assert size == (1.0, 1.0) and clip_type in (1, 2) and len(vertices) >= 2
+    assert any(u_vector) and any(v_vector)
+    assert wipeouts(version) == [reference]
