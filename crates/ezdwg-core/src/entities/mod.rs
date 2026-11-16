@@ -127,10 +127,7 @@ pub use mtext::{
     decode_mtext, decode_mtext_exact, decode_mtext_r14, decode_mtext_r2004, decode_mtext_r2007,
     decode_mtext_r2010, decode_mtext_r2013, MTextEntity,
 };
-pub use multileader::{
-    decode_multileader_r2010, decode_multileader_r2013, MLeaderBlock, MLeaderLine, MLeaderRoot,
-    MLeaderText, MultiLeaderEntity,
-};
+pub use multileader::{decode_multileader_r2010, decode_multileader_r2013, MultiLeaderEntity};
 pub use oleframe::{
     decode_ole2frame, decode_ole2frame_r14, decode_ole2frame_r2007, decode_ole2frame_r2010,
     decode_ole2frame_r2013, decode_oleframe, decode_oleframe_r14, decode_oleframe_r2007,

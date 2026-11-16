@@ -6229,38 +6229,3 @@ pub fn decode_hatch_boundaries(py: Python<'_>, path: &str) -> PyResult<Vec<(u64,
     }
     Ok(result)
 }
-
-/// Every WIPEOUT, which a DWG stores as an IMAGE without an image: `(handle, insert, u_vector, v_vector, size,
-/// display_props, clipping, clip_type, clip_vertices)`, the clip boundary in the pixel space ``u_vector`` and
-/// ``v_vector`` span from ``insert``.
-#[pyfunction(signature = (path, limit=None))]
-pub fn decode_wipeout_entities(
-    path: &str,
-    limit: Option<usize>,
-) -> PyResult<
-    Vec<(
-        u64,
-        (f64, f64, f64),
-        (f64, f64, f64),
-        (f64, f64, f64),
-        (f64, f64),
-        u16,
-        bool,
-        u16,
-        Vec<(f64, f64)>,
-    )>,
-> {
-    collect_entity_rows(path, limit, 0, "WIPEOUT", decode_image_for_version, |e| {
-        (
-            e.handle,
-            e.insert,
-            e.u_vector,
-            e.v_vector,
-            e.size,
-            e.display_props,
-            e.clipping,
-            e.clip_type,
-            e.clip_vertices,
-        )
-    })
-}
