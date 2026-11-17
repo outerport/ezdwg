@@ -126,3 +126,43 @@ def test_mtext_extents_are_the_drawn_text_as_autocad_stored_it() -> None:
             assert rows[handle][11] == pytest.approx((width, height), abs=1e-9)
             assert entities[handle].dxf["extents_width"] == pytest.approx(width, abs=1e-9)
             assert entities[handle].dxf["extents_height"] == pytest.approx(height, abs=1e-9)
+
+
+def test_a_multi_line_attribute_keeps_its_value_content_and_style() -> None:
+    # The value stored in front of the embedded MTEXT (empty here, as the ODA File Converter writes it), the
+    # MTEXT's content as stored, and the attribute's own text style, read like a single-line attribute's.
+    path = str(SAMPLES / "acadsharp" / "sample_AC1032.dwg")
+    document = ezdwg.read(path)
+    rows = {
+        int(entity.handle): entity.dxf
+        for layout in (document.modelspace(), document.entities())
+        for entity in layout.query("ATTRIB ATTDEF")
+    }
+    attribute = rows[0x79D]
+    assert attribute["multi_line_value"] == ""
+    assert attribute["multi_line_content"] == "my multi line text for the attrrib"
+    assert attribute["style_handle"] is not None
+    assert rows[0x796]["multi_line_content"] == ""
+    single = [dxf for dxf in rows.values() if dxf.get("multi_line_value") is None]
+    assert single and all(dxf.get("multi_line_content") is None for dxf in single)
+
+
+@pytest.mark.parametrize("stem", ["sample_AC1021", "sample_AC1024", "sample_AC1027", "sample_AC1032"])
+def test_a_hatch_keeps_its_pattern_name_from_the_string_stream(stem: str) -> None:
+    # The pattern names the ODA File Converter writes for the same drawing.
+    document = ezdwg.read(str(SAMPLES / "acadsharp" / f"{stem}.dwg"))
+    names = {
+        entity.dxf["pattern_name"]
+        for layout in (document.modelspace(), document.entities())
+        for entity in layout.query("HATCH")
+        if not entity.dxf.get("solid_fill")
+    }
+    assert names == {"ANSI31", "AR-PARQ1", "HSBDR3E0", "HSHP21E0", "HSHP31E0", "HVEGE100"}
+
+
+def test_an_object_entitys_common_properties_are_read_by_handle() -> None:
+    path = str(SAMPLES / "acadsharp" / "sample_AC1032.dwg")
+    [wipeout] = raw.decode_wipeout_entities(path)
+    assert raw.decode_object_entity_properties(path, [wipeout[0], 0xFFFFFF]) == [
+        (wipeout[0], 256, None, False, -1, 1.0)
+    ]

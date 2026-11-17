@@ -1203,6 +1203,98 @@ pub fn decode_object_entity_layer_handles(
     Ok(result)
 }
 
+/// The properties every entity's common header stores, for entities read outside
+/// the entity rows (WIPEOUT, IMAGE, MULTILEADER): `(handle, color index, true
+/// color, invisible, lineweight, linetype scale)`. The lineweight is in hundredths
+/// of a millimetre, or -1 BYLAYER, -2 BYBLOCK, -3 the default; `None` before
+/// R2000. A handle whose header cannot be read is left out.
+#[pyfunction(signature = (path, handles))]
+pub fn decode_object_entity_properties(
+    path: &str,
+    handles: Vec<u64>,
+) -> PyResult<Vec<ObjectEntityPropertiesRow>> {
+    if handles.is_empty() {
+        return Ok(Vec::new());
+    }
+    let shared = decoded_file(path)?;
+    let decoder = shared.decoder()?;
+    let best_effort = shared.best_effort;
+    let index = &shared.index;
+    let target_handles: HashSet<u64> = handles.iter().copied().collect();
+    let mut object_offsets: HashMap<u64, u32> = HashMap::new();
+    for obj in index.objects.iter() {
+        if !target_handles.contains(&obj.handle.0) {
+            continue;
+        }
+        object_offsets
+            .entry(obj.handle.0)
+            .and_modify(|offset| {
+                if obj.offset > *offset {
+                    *offset = obj.offset;
+                }
+            })
+            .or_insert(obj.offset);
+    }
+    let mut result = Vec::new();
+    for handle in handles {
+        let Some(offset) = object_offsets.get(&handle).copied() else {
+            continue;
+        };
+        let Some((record, header)) = parse_record_and_header(&decoder, offset, best_effort)? else {
+            continue;
+        };
+        let Some(common) = parse_object_common_entity_header(&record, decoder.version(), &header)
+        else {
+            continue;
+        };
+        result.push((
+            handle,
+            common.color.index,
+            common.color.true_color,
+            common.invisible,
+            common
+                .line_weight
+                .and_then(entities::common::lineweight_from_index),
+            common.ltype_scale,
+        ));
+    }
+    Ok(result)
+}
+
+fn parse_object_common_entity_header(
+    record: &objects::ObjectRecord<'_>,
+    version: &version::DwgVersion,
+    header: &ApiObjectHeader,
+) -> Option<entities::common::CommonEntityHeader> {
+    let mut reader = record.bit_reader();
+    skip_object_type_prefix(&mut reader, version).ok()?;
+    match version {
+        version::DwgVersion::R13 | version::DwgVersion::R14 => {
+            entities::common::parse_common_entity_header_r14(&mut reader).ok()
+        }
+        version::DwgVersion::R2000 | version::DwgVersion::R2004 | version::DwgVersion::R2007 => {
+            entities::common::parse_common_entity_header_r2007(&mut reader).ok()
+        }
+        version::DwgVersion::R2010 => parse_dim_common_header_r2010_plus_with_candidates(
+            &mut reader,
+            header,
+            |candidate_reader, end_bit| {
+                entities::common::parse_common_entity_header_r2010(candidate_reader, end_bit)
+            },
+        ),
+        version::DwgVersion::R2013 | version::DwgVersion::R2018 => {
+            parse_dim_common_header_r2010_plus_with_candidates(
+                &mut reader,
+                header,
+                |candidate_reader, end_bit| {
+                    entities::common::parse_common_entity_header_r2013(candidate_reader, end_bit)
+                },
+            )
+        }
+        _ => None,
+    }
+}
+
 fn decode_object_entity_layer_handle_from_record(
     record: &objects::ObjectRecord<'_>,
     version: &version::DwgVersion,

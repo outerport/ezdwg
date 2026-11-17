@@ -3,6 +3,20 @@
 ## Unreleased
 
 ### DWG reader
+- A multi-line ATTRIB/ATTDEF (R2018) keeps its text style, read from the
+  first handle after the common handles as a single-line one's is, and
+  `Document` gives its stored single-line value as `multi_line_value` and its
+  embedded MTEXT content with formatting codes as `multi_line_content`
+  (`None` for a single-line attribute). The attribute row's last tuple gains
+  them as a third item.
+- R2007+ HATCH reads its pattern name from the string stream (it came back
+  empty).
+- TEXT, ATTRIB and ATTDEF whose DataFlags leave the alignment point at its
+  default get (0, 0, elevation) when they are aligned; left-baseline text
+  keeps none.
+- `raw.decode_object_entity_properties(path, handles)` gives the common
+  header's colour, true colour, visibility, lineweight and linetype scale of
+  entities read outside the entity rows (WIPEOUT, IMAGE, MULTILEADER).
 - MTEXT keeps the width and height of its text as drawn, as AutoCAD stored
   them (DXF group codes 42 and 43): `Document` layouts give them as
   `extents_width` and `extents_height`, and `raw.decode_mtext_entities` rows

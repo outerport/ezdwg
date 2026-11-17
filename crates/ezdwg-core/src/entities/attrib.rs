@@ -10,7 +10,7 @@ use crate::entities::common::{
 };
 use crate::entities::common::{parse_common_entity_header_for_format, StringStreamFormat};
 use crate::entities::mtext::{decode_embedded_mtext_r2010, EmbeddedMTextData};
-use crate::entities::text::decode_r21_text_tail;
+use crate::entities::text::{decode_r21_text_tail, default_alignment};
 
 #[derive(Debug, Clone)]
 pub struct AttribEntity {
@@ -36,6 +36,20 @@ pub struct AttribEntity {
     pub flags: u8,
     pub lock_position: bool,
     pub prompt: Option<String>,
+    /// A multi-line attribute's own texts, `None` for a single-line one.
+    pub multi_line: Option<MultiLineAttribText>,
+}
+
+/// What a multi-line attribute (R2018 attribute type 2 or 4) stores beside the
+/// plain text in `AttribEntity::text`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MultiLineAttribText {
+    /// The single-line text value the record keeps in front of its embedded
+    /// MTEXT (DXF group 1), which may differ from the MTEXT's content.
+    pub value: String,
+    /// The embedded MTEXT's content as stored, with its formatting codes
+    /// (``\W0.7000;``, ``\P``).
+    pub content: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -88,7 +102,7 @@ pub fn decode_attrib_exact(
     };
     let insertion_x = reader.read_rd(Endian::Little)?;
     let insertion_y = reader.read_rd(Endian::Little)?;
-    let alignment = if (data_flags & 0x02) == 0 {
+    let stored_alignment = if (data_flags & 0x02) == 0 {
         let align_x = reader.read_dd(insertion_x)?;
         let align_y = reader.read_dd(insertion_y)?;
         Some((align_x, align_y, elevation))
@@ -128,6 +142,12 @@ pub fn decode_attrib_exact(
     } else {
         0
     };
+    let alignment = default_alignment(
+        stored_alignment,
+        elevation,
+        horizontal_alignment,
+        vertical_alignment,
+    );
 
     let has_version = format != StringStreamFormat::R2007;
     if has_version {
@@ -188,16 +208,22 @@ pub fn decode_attrib_exact(
     // Single line: text value, tag, [prompt]. Multi line: the text of the
     // embedded MTEXT sits between the (usually empty) text value and the tag.
     let trailing = if is_attdef { 2 } else { 1 };
+    let mut multi_line_text = None;
     let (text, tag, prompt) = if multi_line {
         if strings.len() < trailing + 2 {
             return Err(not_exact("has too few strings"));
         }
         let prompt = is_attdef.then(|| strings[strings.len() - 1].clone());
         let tag = strings[strings.len() - trailing].clone();
-        let mut text = mtext_plain_text(&strings[strings.len() - trailing - 1]);
+        let content = strings[strings.len() - trailing - 1].clone();
+        let mut text = mtext_plain_text(&content);
         if text.is_empty() {
             text = strings[0].clone();
         }
+        multi_line_text = Some(MultiLineAttribText {
+            value: strings[0].clone(),
+            content,
+        });
         (text, tag, prompt)
     } else {
         if strings.len() != trailing + 1 {
@@ -223,12 +249,9 @@ pub fn decode_attrib_exact(
             Ok(common_handles) => (
                 common_handles.owner_ref,
                 common_handles.layer,
-                // The handles of an embedded MTEXT come first in a multi-line attribute.
-                if multi_line {
-                    None
-                } else {
-                    read_handle_reference(reader, header.handle).ok()
-                },
+                // The attribute's text style comes first, a multi-line
+                // attribute's embedded MTEXT handles after it.
+                read_handle_reference(reader, header.handle).ok(),
             ),
             Err(_) => (None, 0, None),
         };
@@ -256,6 +279,7 @@ pub fn decode_attrib_exact(
         flags,
         lock_position,
         prompt,
+        multi_line: multi_line_text,
     })
 }
 
@@ -402,6 +426,7 @@ fn decode_attrib_like_r14(
         flags,
         lock_position: false,
         prompt,
+        multi_line: None,
     })
 }
 
@@ -507,7 +532,7 @@ fn decode_attrib_like_body(
     let insertion_x = reader.read_rd(Endian::Little)?;
     let insertion_y = reader.read_rd(Endian::Little)?;
 
-    let alignment = if (data_flags & 0x02) == 0 {
+    let stored_alignment = if (data_flags & 0x02) == 0 {
         let align_x = reader.read_dd(insertion_x)?;
         let align_y = reader.read_dd(insertion_y)?;
         Some((align_x, align_y, elevation))
@@ -559,6 +584,12 @@ fn decode_attrib_like_body(
         };
         (text, generation, horizontal_alignment, vertical_alignment)
     };
+    let alignment = default_alignment(
+        stored_alignment,
+        elevation,
+        horizontal_alignment,
+        vertical_alignment,
+    );
 
     let tail_start = reader.get_pos();
     let mut tail = AttribTailData::default();
@@ -651,7 +682,12 @@ fn decode_attrib_like_body(
     let mut final_style_handle = style_handle;
     let mut final_owner_handle = owner_handle;
     let mut final_layer_handle = layer_handle;
+    let mut multi_line_text = None;
     if let Some(embedded) = tail.embedded_mtext.as_ref() {
+        multi_line_text = Some(MultiLineAttribText {
+            value: final_text.clone(),
+            content: embedded.text.clone(),
+        });
         if !embedded.text.is_empty() {
             final_text = embedded.text.clone();
         }
@@ -696,6 +732,7 @@ fn decode_attrib_like_body(
         flags: tail.flags,
         lock_position: tail.lock_position,
         prompt: tail.prompt,
+        multi_line: multi_line_text,
     })
 }
 

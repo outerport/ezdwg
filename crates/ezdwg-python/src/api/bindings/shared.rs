@@ -127,9 +127,10 @@ type AttribEntityRow = (
     TextAlignmentRow,
     u8,
     bool,
-    (Option<u64>, Option<u64>),
+    (Option<u64>, Option<u64>, Option<(String, String)>),
 );
 type MTextBackgroundRow = (u32, Option<f64>, Option<u16>, Option<u32>, Option<u32>);
+type ObjectEntityPropertiesRow = (u64, Option<u16>, Option<u32>, bool, Option<i16>, f64);
 type MTextEntityRow = (
     u64,
     String,

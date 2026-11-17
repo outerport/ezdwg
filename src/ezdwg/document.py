@@ -1551,6 +1551,9 @@ class Layout:
                         style_handle = style_owner_handles[0]
                     if len(style_owner_handles) >= 2:
                         owner_handle = style_owner_handles[1]
+                multi_line = None
+                if isinstance(style_owner_handles, tuple) and len(style_owner_handles) >= 3:
+                    multi_line = style_owner_handles[2]
                 owner_handle_value = None
                 if owner_handle is not None:
                     try:
@@ -1582,6 +1585,8 @@ class Layout:
                             "lock_position": bool(lock_position),
                             "owner_handle": owner_handle_value,
                             "owner_type": "INSERT" if owner_handle_value is not None else None,
+                            "multi_line_value": multi_line[0] if multi_line else None,
+                            "multi_line_content": multi_line[1] if multi_line else None,
                         },
                         entity_style_map,
                         layer_color_map,
@@ -1615,6 +1620,9 @@ class Layout:
                         style_handle = style_owner_handles[0]
                     if len(style_owner_handles) >= 2:
                         owner_handle = style_owner_handles[1]
+                multi_line = None
+                if isinstance(style_owner_handles, tuple) and len(style_owner_handles) >= 3:
+                    multi_line = style_owner_handles[2]
                 owner_handle_value = None
                 if owner_handle is not None:
                     try:
@@ -1646,6 +1654,8 @@ class Layout:
                             "lock_position": bool(lock_position),
                             "owner_handle": owner_handle_value,
                             "owner_type": "BLOCK" if owner_handle_value is not None else None,
+                            "multi_line_value": multi_line[0] if multi_line else None,
+                            "multi_line_content": multi_line[1] if multi_line else None,
                         },
                         entity_style_map,
                         layer_color_map,

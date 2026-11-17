@@ -81,7 +81,7 @@ pub fn decode_text_exact(
     };
     let insertion_x = reader.read_rd(Endian::Little)?;
     let insertion_y = reader.read_rd(Endian::Little)?;
-    let alignment = if (data_flags & 0x02) == 0 {
+    let stored_alignment = if (data_flags & 0x02) == 0 {
         let align_x = reader.read_dd(insertion_x)?;
         let align_y = reader.read_dd(insertion_y)?;
         Some((align_x, align_y, elevation))
@@ -121,6 +121,12 @@ pub fn decode_text_exact(
     } else {
         0
     };
+    let alignment = default_alignment(
+        stored_alignment,
+        elevation,
+        horizontal_alignment,
+        vertical_alignment,
+    );
 
     let not_exact = |what: &str| DwgError::new(ErrorKind::Format, format!("text {what}"));
     let (mut strings, strings_end) = string_stream_reader(reader, header.obj_size)
@@ -205,7 +211,7 @@ fn decode_text_with_header(
     let insertion_x = reader.read_rd(Endian::Little)?;
     let insertion_y = reader.read_rd(Endian::Little)?;
 
-    let alignment = if (data_flags & 0x02) == 0 {
+    let stored_alignment = if (data_flags & 0x02) == 0 {
         let align_x = reader.read_dd(insertion_x)?;
         let align_y = reader.read_dd(insertion_y)?;
         Some((align_x, align_y, elevation))
@@ -257,6 +263,12 @@ fn decode_text_with_header(
         };
         (text, generation, horizontal_alignment, vertical_alignment)
     };
+    let alignment = default_alignment(
+        stored_alignment,
+        elevation,
+        horizontal_alignment,
+        vertical_alignment,
+    );
 
     let (owner_handle, layer_handle, style_handle) =
         decode_text_handles(reader, &header, allow_handle_decode_failure)?;
@@ -631,5 +643,36 @@ fn decode_text_handles(
             Ok((None, layer, None))
         }
         Err(err) => Err(err),
+    }
+}
+
+/// A TEXT, ATTRIB or ATTDEF's alignment point. DataFlags bit 0x02 states that
+/// it holds its default, (0, 0) at the elevation, rather than leaving it out: an
+/// aligned text drawn there has its insertion point computed from it. Text
+/// aligned left on its baseline has none, as DXF writes it.
+pub(crate) fn default_alignment(
+    stored: Option<(f64, f64, f64)>,
+    elevation: f64,
+    horizontal_alignment: u16,
+    vertical_alignment: u16,
+) -> Option<(f64, f64, f64)> {
+    stored.or_else(|| {
+        (horizontal_alignment != 0 || vertical_alignment != 0).then_some((0.0, 0.0, elevation))
+    })
+}
+
+#[cfg(test)]
+mod default_alignment_tests {
+    use super::default_alignment;
+
+    #[test]
+    fn an_aligned_text_without_a_stored_alignment_point_aligns_at_the_origin() {
+        assert_eq!(default_alignment(None, 2.0, 1, 1), Some((0.0, 0.0, 2.0)));
+        assert_eq!(default_alignment(None, 0.0, 0, 3), Some((0.0, 0.0, 0.0)));
+        assert_eq!(default_alignment(None, 0.0, 0, 0), None);
+        assert_eq!(
+            default_alignment(Some((5.0, 6.0, 0.0)), 0.0, 1, 2),
+            Some((5.0, 6.0, 0.0))
+        );
     }
 }

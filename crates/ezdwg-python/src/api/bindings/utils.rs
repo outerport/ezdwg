@@ -275,7 +275,14 @@ where
             ),
             entity.flags,
             entity.lock_position,
-            (entity.style_handle, entity.owner_handle),
+            (
+                entity.style_handle,
+                entity.owner_handle,
+                entity
+                    .multi_line
+                    .as_ref()
+                    .map(|text| (text.value.clone(), text.content.clone())),
+            ),
         ));
         if let Some(limit) = limit {
             if result.len() >= limit {
@@ -1585,6 +1592,7 @@ mod tests {
             flags: 0,
             lock_position: false,
             prompt: None,
+            multi_line: None,
         }
     }
 

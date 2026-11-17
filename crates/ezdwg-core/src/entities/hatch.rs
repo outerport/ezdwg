@@ -5,7 +5,7 @@ use crate::entities::common::parse_common_entity_header_r14_with_handle;
 use crate::entities::common::{
     parse_common_entity_handles, parse_common_entity_header, parse_common_entity_header_r2007,
     parse_common_entity_header_r2010, parse_common_entity_header_r2013,
-    parse_common_entity_layer_handle, CommonEntityHeader,
+    parse_common_entity_layer_handle, string_stream_reader, CommonEntityHeader,
 };
 
 /// How string fields (pattern name, gradient name) are stored in the data stream.
@@ -375,9 +375,12 @@ fn decode_hatch_with_header(
         }
     }
 
-    if let Some((score, chosen_reader, entity)) = best {
+    if let Some((score, chosen_reader, mut entity)) = best {
         if score > HATCH_CANDIDATE_REJECT {
             *reader = chosen_reader;
+            if use_unicode_text && entity.name.is_empty() {
+                entity.name = string_stream_pattern_name(&base_reader, header.obj_size);
+            }
             return Ok(entity);
         }
         // Every candidate was garbage (no boundary): report a failure instead of
@@ -927,6 +930,22 @@ fn is_plausible_hatch_point(point: (f64, f64)) -> bool {
 /// or path read as doubles come out as denormals or astronomically large.
 fn is_plausible_tangent_component(value: f64) -> bool {
     value.is_finite() && (value == 0.0 || (1.0e-9..=1.0e8).contains(&value.abs()))
+}
+
+/// R2007+: the pattern name, the last string of the hatch's string stream (a
+/// gradient name, when stored, precedes it); empty when there is none.
+fn string_stream_pattern_name(reader: &BitReader<'_>, data_end_bit: u32) -> String {
+    let Some((mut strings, strings_end)) = string_stream_reader(reader, data_end_bit) else {
+        return String::new();
+    };
+    let mut name = String::new();
+    while strings.tell_bits() < u64::from(strings_end) {
+        match strings.read_tu() {
+            Ok(value) if strings.tell_bits() <= u64::from(strings_end) => name = value,
+            _ => break,
+        }
+    }
+    name
 }
 
 fn read_hatch_string(reader: &mut BitReader<'_>, mode: HatchStringMode) -> Result<String> {
