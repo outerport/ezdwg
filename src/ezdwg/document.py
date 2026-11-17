@@ -1669,6 +1669,7 @@ class Layout:
                 drawing_dir,
                 background_data,
                 owner_handle,
+                (extents_width, extents_height),
             ) in raw.decode_mtext_entities(decode_path):
                 (
                     background_flags,
@@ -1700,6 +1701,8 @@ class Layout:
                             "text_direction": x_axis_dir,
                             "rotation": rotation,
                             "rect_width": rect_width,
+                            "extents_width": extents_width,
+                            "extents_height": extents_height,
                             "char_height": text_height,
                             "attachment_point": attachment,
                             "drawing_direction": drawing_dir,

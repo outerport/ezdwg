@@ -30,6 +30,10 @@ pub struct MTextEntity {
     pub text_height: f64,
     pub attachment: u16,
     pub drawing_dir: u16,
+    /// Width and height of the text as drawn, as AutoCAD stored them (DXF
+    /// group codes 42 and 43); ``rect_width`` is the reference column width.
+    pub extents_width: f64,
+    pub extents_height: f64,
     pub background_flags: u32,
     pub background_scale_factor: Option<f64>,
     pub background_color_index: Option<u16>,
@@ -63,6 +67,8 @@ struct ParsedMTextBody {
     text_height: f64,
     attachment: u16,
     drawing_dir: u16,
+    extents_width: f64,
+    extents_height: f64,
     text: String,
     background_flags: u32,
     background_scale_factor: Option<f64>,
@@ -87,8 +93,8 @@ pub fn decode_mtext_r14(reader: &mut BitReader<'_>, object_handle: u64) -> Resul
     let text_height = reader.read_bd()?;
     let attachment = reader.read_bs()?;
     let drawing_dir = reader.read_bs()?;
-    let _extents_height = reader.read_bd()?;
-    let _extents_width = reader.read_bd()?;
+    let extents_height = reader.read_bd()?;
+    let extents_width = reader.read_bd()?;
     let text = reader.read_tv()?;
 
     reader.set_bit_pos(header.obj_size);
@@ -111,6 +117,8 @@ pub fn decode_mtext_r14(reader: &mut BitReader<'_>, object_handle: u64) -> Resul
         text_height,
         attachment,
         drawing_dir,
+        extents_width,
+        extents_height,
         background_flags: 0,
         background_scale_factor: None,
         background_color_index: None,
@@ -147,8 +155,8 @@ pub fn decode_mtext_exact(
     let text_height = reader.read_bd()?;
     let attachment = reader.read_bs()?;
     let drawing_dir = reader.read_bs()?;
-    let _extents_height = reader.read_bd()?;
-    let _extents_width = reader.read_bd()?;
+    let extents_height = reader.read_bd()?;
+    let extents_width = reader.read_bd()?;
 
     let not_exact = |what: &str| DwgError::new(ErrorKind::Format, format!("mtext {what}"));
     let text = first_stream_string(reader, header.obj_size)
@@ -228,6 +236,8 @@ pub fn decode_mtext_exact(
         text_height,
         attachment,
         drawing_dir,
+        extents_width,
+        extents_height,
         background_flags,
         background_scale_factor,
         background_color_index,
@@ -319,6 +329,8 @@ fn decode_mtext_with_header(
         text_height: body.text_height,
         attachment: body.attachment,
         drawing_dir: body.drawing_dir,
+        extents_width: body.extents_width,
+        extents_height: body.extents_height,
         background_flags: body.background_flags,
         background_scale_factor: body.background_scale_factor,
         background_color_index: body.background_color_index,
@@ -377,8 +389,8 @@ fn parse_mtext_body(
     let text_height = reader.read_bd()?;
     let attachment = reader.read_bs()?;
     let drawing_dir = reader.read_bs()?;
-    let _extents_height = reader.read_bd()?;
-    let _extents_width = reader.read_bd()?;
+    let extents_height = reader.read_bd()?;
+    let extents_width = reader.read_bd()?;
     let text = if use_unicode_text {
         reader.read_tu()?
     } else {
@@ -455,6 +467,8 @@ fn parse_mtext_body(
         text_height,
         attachment,
         drawing_dir,
+        extents_width,
+        extents_height,
         text,
         background_flags,
         background_scale_factor,

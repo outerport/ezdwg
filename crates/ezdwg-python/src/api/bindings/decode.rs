@@ -4171,6 +4171,7 @@ pub fn decode_mtext_entities(path: &str, limit: Option<usize>) -> PyResult<Vec<M
                 entity.background_transparency,
             ),
             entity.owner_handle,
+            (entity.extents_width, entity.extents_height),
         ));
         if let Some(limit) = limit {
             if result.len() >= limit {

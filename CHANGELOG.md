@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### DWG reader
+- MTEXT keeps the width and height of its text as drawn, as AutoCAD stored
+  them (DXF group codes 42 and 43): `Document` layouts give them as
+  `extents_width` and `extents_height`, and `raw.decode_mtext_entities` rows
+  end with them as a pair. `rect_width` stays the reference column width,
+  which can be many times wider than the text. 0 means the writer of the
+  file stored none.
 - Keep R2007+ ATTRIB/ATTDEF records read at their exact layout when their
   numbers are finite, including lone symbols, private-use characters and
   text heights below 1e-8. Fallback readers retain the plausibility check.

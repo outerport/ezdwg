@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterator
 
+import pytest
+
 import ezdwg
 from ezdwg import raw
 
@@ -107,3 +109,20 @@ def test_mtext_plain_text_skips_the_height_caxa_writes_in_a_stack() -> None:
     # The AutoCAD stack is read as before.
     assert _decode_mtext_plain_text("\\S1^2;x") == "1/2x"
     assert _decode_mtext_plain_text("{\\H0.7x;\\S+0.1^-0.2;}A") == "+0.1/-0.2A"
+
+
+def test_mtext_extents_are_the_drawn_text_as_autocad_stored_it() -> None:
+    # The width and height AutoCAD stored for each text as drawn (DXF group codes 42 and 43), as the ODA File
+    # Converter writes them; the reference column width (``rect_width``) is wider than the text on these.
+    stored = {0x3EC: (13.49522510231924, 2.944292860391087), 0x779: (15.26057298772169, 204.3497044110957)}
+    for stem in ["sample_AC1015", "sample_AC1018", "sample_AC1032"]:
+        path = str(SAMPLES / "acadsharp" / f"{stem}.dwg")
+        rows = {row[0]: row for row in raw.decode_mtext_entities(path)}
+        entities = {
+            entity.handle: entity
+            for entity in ezdwg.read(path).modelspace().query("MTEXT")
+        }
+        for handle, (width, height) in stored.items():
+            assert rows[handle][11] == pytest.approx((width, height), abs=1e-9)
+            assert entities[handle].dxf["extents_width"] == pytest.approx(width, abs=1e-9)
+            assert entities[handle].dxf["extents_height"] == pytest.approx(height, abs=1e-9)

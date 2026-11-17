@@ -142,6 +142,7 @@ type MTextEntityRow = (
     u16,
     MTextBackgroundRow,
     Option<u64>,
+    (f64, f64),
 );
 type LeaderEntityRow = (u64, u16, u16, Vec<Point3>);
 type HatchPathRow = (bool, Vec<Point2>);
